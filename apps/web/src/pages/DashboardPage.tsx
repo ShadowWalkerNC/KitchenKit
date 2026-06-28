@@ -1,0 +1,57 @@
+import { BookOpen, ClipboardList, Scale, Layers } from 'lucide-react';
+import { Link } from 'react-router-dom';
+
+const stats = [
+  { label: 'Recipes',      value: '0',  icon: BookOpen,      href: '/recipes' },
+  { label: 'Prep Plans',   value: '0',  icon: ClipboardList, href: '/prep' },
+  { label: 'Scaled Today', value: '0',  icon: Scale,         href: '/recipes' },
+  { label: 'Ingredients',  value: '0',  icon: Layers,        href: '/recipes' },
+];
+
+export default function DashboardPage() {
+  return (
+    <div className="space-y-8 max-w-5xl mx-auto">
+      {/* Welcome */}
+      <div>
+        <h2 className="text-2xl font-bold text-zinc-100">Welcome back 👋</h2>
+        <p className="mt-1 text-sm text-zinc-400">Here's what's on deck for today.</p>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map(({ label, value, icon: Icon, href }) => (
+          <Link key={label} to={href} className="card hover:border-brand-600/50 transition-colors group">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{label}</span>
+              <Icon size={16} className="text-brand-500 group-hover:text-brand-400 transition-colors" />
+            </div>
+            <p className="text-3xl font-bold text-zinc-100">{value}</p>
+          </Link>
+        ))}
+      </div>
+
+      {/* Quick actions */}
+      <div>
+        <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Quick Actions</h3>
+        <div className="flex flex-wrap gap-3">
+          <Link to="/recipes" className="btn-primary text-sm">+ New Recipe</Link>
+          <Link to="/prep" className="btn-primary text-sm">+ Build Prep Plan</Link>
+        </div>
+      </div>
+
+      {/* Ratio engine callout */}
+      <div className="card border-brand-600/30 bg-brand-600/5">
+        <div className="flex items-start gap-3">
+          <span className="text-2xl">🧠</span>
+          <div>
+            <h3 className="font-semibold text-zinc-100 mb-1">Ratio Blueprint Engine</h3>
+            <p className="text-sm text-zinc-400">
+              KitchenKit stores recipes as <span className="text-brand-400 font-mono">ratios</span>, not absolute weights.
+              Scale any recipe to any batch size with zero rounding drift.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
