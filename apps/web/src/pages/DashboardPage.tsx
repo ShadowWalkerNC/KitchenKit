@@ -1,34 +1,67 @@
-import { BookOpen, ClipboardList, Scale, Layers } from 'lucide-react';
+import { BookOpen, ClipboardList, Scale, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
-
-const stats = [
-  { label: 'Recipes',      value: '0',  icon: BookOpen,      href: '/recipes' },
-  { label: 'Prep Plans',   value: '0',  icon: ClipboardList, href: '/prep' },
-  { label: 'Scaled Today', value: '0',  icon: Scale,         href: '/recipes' },
-  { label: 'Ingredients',  value: '0',  icon: Layers,        href: '/recipes' },
-];
+import { useDashboardStats } from '@/hooks/useDashboardStats';
+import { useAuth } from '@/context/AuthContext';
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const { data: stats, isLoading } = useDashboardStats();
+
+  const displayName = user?.email?.split('@')[0] ?? 'Chef';
+
+  const cards = [
+    { label: 'Recipes',      value: stats?.recipeCount   ?? 0, icon: BookOpen,      href: '/recipes', color: 'text-brand-400' },
+    { label: 'Prep Plans',   value: stats?.parItemCount  ?? 0, icon: ClipboardList, href: '/prep',    color: 'text-emerald-400' },
+    { label: 'Scaled Today', value: 0,                         icon: Scale,         href: '/recipes', color: 'text-sky-400' },
+    {
+      label: 'Below Par',
+      value: stats?.belowParCount ?? 0,
+      icon: AlertTriangle,
+      href: '/prep',
+      color: (stats?.belowParCount ?? 0) > 0 ? 'text-amber-400' : 'text-zinc-600',
+    },
+  ];
+
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
-      {/* Welcome */}
       <div>
-        <h2 className="text-2xl font-bold text-zinc-100">Welcome back 👋</h2>
-        <p className="mt-1 text-sm text-zinc-400">Here's what's on deck for today.</p>
+        <h2 className="text-2xl font-bold text-zinc-100">
+          {isLoading ? 'Loading...' : `Welcome back, ${displayName} 👋`}
+        </h2>
+        <p className="mt-1 text-sm text-zinc-400">Here’s what’s on deck for today.</p>
       </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map(({ label, value, icon: Icon, href }) => (
+        {cards.map(({ label, value, icon: Icon, href, color }) => (
           <Link key={label} to={href} className="card hover:border-brand-600/50 transition-colors group">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{label}</span>
-              <Icon size={16} className="text-brand-500 group-hover:text-brand-400 transition-colors" />
+              <Icon size={16} className={`${color} transition-colors`} />
             </div>
-            <p className="text-3xl font-bold text-zinc-100">{value}</p>
+            <p className="text-3xl font-bold text-zinc-100">
+              {isLoading ? <span className="text-zinc-600 text-lg">...</span> : value}
+            </p>
           </Link>
         ))}
       </div>
+
+      {/* Below-par alert */}
+      {(stats?.belowParCount ?? 0) > 0 && (
+        <div className="card border-amber-500/30 bg-amber-500/5">
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={18} className="text-amber-400 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-zinc-100">
+                {stats!.belowParCount} item{stats!.belowParCount !== 1 ? 's' : ''} below par
+              </p>
+              <Link to="/prep" className="text-xs text-amber-400 hover:text-amber-300 transition-colors">
+                Build prep plan →
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick actions */}
       <div>
@@ -46,7 +79,8 @@ export default function DashboardPage() {
           <div>
             <h3 className="font-semibold text-zinc-100 mb-1">Ratio Blueprint Engine</h3>
             <p className="text-sm text-zinc-400">
-              KitchenKit stores recipes as <span className="text-brand-400 font-mono">ratios</span>, not absolute weights.
+              KitchenKit stores recipes as{' '}
+              <span className="text-brand-400 font-mono">ratios</span>, not absolute weights.
               Scale any recipe to any batch size with zero rounding drift.
             </p>
           </div>

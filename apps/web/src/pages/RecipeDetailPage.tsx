@@ -1,45 +1,71 @@
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Scale } from 'lucide-react';
+import { ArrowLeft, Scale, Loader2, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
+import { useRecipe, toEngineRecipe } from '@/hooks/useRecipes';
 import { scaleRecipe } from '@kitchenkit/ratio-engine';
-import type { Recipe } from '@kitchenkit/ratio-engine';
-
-// Placeholder until Supabase wired — demo recipe
-const DEMO_RECIPE: Recipe = {
-  id: 'demo-brioche',
-  name: 'Brioche Dough',
-  baseIngredient: 'bread_flour',
-  ingredients: [
-    { name: 'bread_flour',      ratio: 1.0,   unit: 'g' },
-    { name: 'whole_eggs',       ratio: 0.50,  unit: 'g' },
-    { name: 'butter',           ratio: 0.45,  unit: 'g' },
-    { name: 'sugar',            ratio: 0.10,  unit: 'g' },
-    { name: 'salt',             ratio: 0.018, unit: 'g' },
-    { name: 'instant_yeast',    ratio: 0.015, unit: 'g' },
-    { name: 'whole_milk',       ratio: 0.12,  unit: 'g' },
-  ],
-  yieldUnit: 'g',
-};
 
 export default function RecipeDetailPage() {
-  const { id } = useParams();
-  const recipe = DEMO_RECIPE; // TODO: fetch from Supabase by id
+  const { id } = useParams<{ id: string }>();
+  const { data: recipe, isLoading, error } = useRecipe(id);
   const [baseWeight, setBaseWeight] = useState(500);
-  const scaled = scaleRecipe(recipe, baseWeight);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="animate-spin text-brand-500" size={28} />
+      </div>
+    );
+  }
+
+  if (error || !recipe) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <Link to="/recipes" className="btn-ghost inline-flex items-center gap-1.5 text-sm -ml-3">
+          <ArrowLeft size={15} /> Recipes
+        </Link>
+        <div className="card border-red-500/20 bg-red-500/5 flex items-center gap-3">
+          <AlertCircle size={18} className="text-red-400 shrink-0" />
+          <p className="text-sm text-red-300">
+            {error ? (error as Error).message : 'Recipe not found.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const engineRecipe = toEngineRecipe(recipe);
+  const scaled = scaleRecipe(engineRecipe, baseWeight);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Back */}
       <Link to="/recipes" className="btn-ghost inline-flex items-center gap-1.5 text-sm -ml-3">
         <ArrowLeft size={15} /> Recipes
       </Link>
 
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-zinc-100">{recipe.name}</h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-2xl font-bold text-zinc-100">{recipe.name}</h2>
+          {recipe.is_public && (
+            <span className="badge bg-emerald-600/20 text-emerald-400">public</span>
+          )}
+        </div>
+        {recipe.description && (
+          <p className="text-sm text-zinc-400 mt-1">{recipe.description}</p>
+        )}
         <p className="text-sm text-zinc-500 mt-1">
-          Base ingredient: <span className="text-brand-400 font-mono">{recipe.baseIngredient}</span>
+          Base ingredient:{' '}
+          <span className="text-brand-400 font-mono">{recipe.base_ingredient}</span>
+          {' · '}
+          <span className="text-zinc-500">yield unit: {recipe.yield_unit}</span>
         </p>
+        {recipe.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {recipe.tags.map((tag) => (
+              <span key={tag} className="badge bg-zinc-700 text-zinc-400">{tag}</span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Scale control */}
@@ -49,14 +75,12 @@ export default function RecipeDetailPage() {
           <h3 className="font-semibold text-zinc-100">Scale Recipe</h3>
         </div>
         <div className="flex items-center gap-3">
-          <label className="text-sm text-zinc-400 shrink-0">Base weight (g)</label>
-          <input
-            type="number"
-            min={1}
-            value={baseWeight}
+          <label className="text-sm text-zinc-400 shrink-0">
+            Base weight ({recipe.yield_unit})
+          </label>
+          <input type="number" min={1} value={baseWeight}
             onChange={(e) => setBaseWeight(Number(e.target.value))}
-            className="input max-w-32"
-          />
+            className="input max-w-32" />
         </div>
       </div>
 
@@ -72,17 +96,20 @@ export default function RecipeDetailPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-border">
-            {recipe.ingredients.map((ing) => (
-              <tr key={ing.name} className="hover:bg-surface-card/50 transition-colors">
-                <td className="py-2.5 font-mono text-zinc-300">{ing.name}</td>
-                <td className="py-2.5 text-right text-zinc-500">
-                  {(ing.ratio * 100).toFixed(1)}%
-                </td>
-                <td className="py-2.5 text-right font-semibold text-zinc-100">
-                  {scaled[ing.name].toFixed(1)}{ing.unit}
-                </td>
-              </tr>
-            ))}
+            {recipe.ingredients
+              .slice()
+              .sort((a, b) => a.sort_order - b.sort_order)
+              .map((ing) => (
+                <tr key={ing.id} className="hover:bg-surface/50 transition-colors">
+                  <td className="py-2.5 font-mono text-zinc-300">{ing.name}</td>
+                  <td className="py-2.5 text-right text-zinc-500">
+                    {(Number(ing.ratio) * 100).toFixed(1)}%
+                  </td>
+                  <td className="py-2.5 text-right font-semibold text-zinc-100">
+                    {(scaled[ing.name] ?? 0).toFixed(1)}{ing.unit}
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
