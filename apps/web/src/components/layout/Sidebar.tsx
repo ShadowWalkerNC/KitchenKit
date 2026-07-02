@@ -14,7 +14,7 @@ import {
 import { supabase } from '../../lib/supabase';
 
 const NAV_ITEMS = [
-  { to: '/',             icon: LayoutDashboard, label: 'Dashboard',    end: true  },
+  { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard',    end: true  },
   { to: '/recipes',      icon: BookOpen,         label: 'Recipes',      end: false },
   { to: '/prep',         icon: ClipboardList,    label: 'Prep Planner', end: true  },
   { to: '/prep/history', icon: History,          label: 'Prep History', end: false },
@@ -33,40 +33,28 @@ export function Sidebar() {
   const location = useLocation();
   const drawerRef = useRef<HTMLDivElement>(null);
 
-  // Close drawer on route change
-  useEffect(() => {
-    setOpen(false);
-  }, [location.pathname]);
+  useEffect(() => { setOpen(false); }, [location.pathname]);
 
-  // Lock body scroll when drawer is open
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
-  // Trap focus / close on Escape
   useEffect(() => {
     if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [open]);
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-  };
+  const handleSignOut = async () => { await supabase.auth.signOut(); };
 
   const NavContent = () => (
     <>
-      {/* Logo */}
       <div className="flex items-center gap-2 px-3 py-4 border-b border-[var(--color-divider)]">
         <ChefHat className="w-6 h-6 text-[var(--color-primary)]" />
         <span className="font-semibold text-[var(--color-text)] text-base">KitchenKit</span>
       </div>
-
-      {/* Nav links */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
         {NAV_ITEMS.map(({ to, icon: Icon, label, end }) => (
           <NavLink key={to} to={to} end={end} className={linkClass}>
@@ -75,8 +63,6 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
-
-      {/* Sign out */}
       <div className="px-2 py-3 border-t border-[var(--color-divider)]">
         <button
           onClick={handleSignOut}
@@ -91,12 +77,12 @@ export function Sidebar() {
 
   return (
     <>
-      {/* ── Desktop sidebar (md+) ─────────────────────────────────────── */}
+      {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-56 shrink-0 h-screen sticky top-0 bg-[var(--color-surface)] border-r border-[var(--color-divider)]">
         <NavContent />
       </aside>
 
-      {/* ── Mobile: top bar with hamburger ────────────────────────────── */}
+      {/* Mobile top bar */}
       <header className="md:hidden flex items-center justify-between px-4 h-14 bg-[var(--color-surface)] border-b border-[var(--color-divider)] sticky top-0 z-30">
         <div className="flex items-center gap-2">
           <ChefHat className="w-5 h-5 text-[var(--color-primary)]" />
@@ -111,26 +97,11 @@ export function Sidebar() {
         </button>
       </header>
 
-      {/* ── Mobile: overlay + slide-in drawer ─────────────────────────── */}
+      {/* Mobile drawer */}
       {open && (
-        <div
-          className="md:hidden fixed inset-0 z-40 flex"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Navigation menu"
-        >
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setOpen(false)}
-          />
-
-          {/* Drawer */}
-          <div
-            ref={drawerRef}
-            className="relative flex flex-col w-64 h-full bg-[var(--color-surface)] shadow-xl z-50"
-          >
-            {/* Close button */}
+        <div className="md:hidden fixed inset-0 z-40 flex" role="dialog" aria-modal="true" aria-label="Navigation menu">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
+          <div ref={drawerRef} className="relative flex flex-col w-64 h-full bg-[var(--color-surface)] shadow-xl z-50">
             <button
               onClick={() => setOpen(false)}
               aria-label="Close navigation"
@@ -138,7 +109,6 @@ export function Sidebar() {
             >
               <X className="w-4 h-4" />
             </button>
-
             <NavContent />
           </div>
         </div>
@@ -146,3 +116,5 @@ export function Sidebar() {
     </>
   );
 }
+
+export default Sidebar;

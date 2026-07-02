@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
 export interface DBPrepPlan {
@@ -25,16 +26,12 @@ export interface DBPrepPlanWithItems extends DBPrepPlan {
   items: DBPrepPlanItem[];
 }
 
-// ---------------------------------------------------------------------------
-// usePrepPlan — load saved plan for shift + date
-// ---------------------------------------------------------------------------
 export function usePrepPlan(shift: string, date: string) {
   return useQuery<DBPrepPlanWithItems | null>({
     queryKey: ['prep_plan', shift, date],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
-
       const { data, error } = await supabase
         .from('prep_plans')
         .select('*, items:prep_plan_items(*)')
@@ -42,7 +39,6 @@ export function usePrepPlan(shift: string, date: string) {
         .eq('shift', shift)
         .eq('plan_date', date)
         .maybeSingle();
-
       if (error) throw error;
       return data as DBPrepPlanWithItems | null;
     },
@@ -50,17 +46,11 @@ export function usePrepPlan(shift: string, date: string) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// useSavePrepPlan — upsert plan header + replace undone items
-// ---------------------------------------------------------------------------
 export function useSavePrepPlan() {
   const qc = useQueryClient();
-
   return useMutation({
     mutationFn: async ({
-      shift,
-      date,
-      items,
+      shift, date, items,
     }: {
       shift: string;
       date: string;
@@ -69,7 +59,6 @@ export function useSavePrepPlan() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Upsert plan header
       const { data: plan, error: planErr } = await supabase
         .from('prep_plans')
         .upsert(
@@ -78,24 +67,19 @@ export function useSavePrepPlan() {
         )
         .select()
         .single();
-
       if (planErr) throw planErr;
 
-      // Delete undone items (preserve done ones)
       const { error: delErr } = await supabase
         .from('prep_plan_items')
         .delete()
         .eq('plan_id', plan.id)
         .eq('is_done', false);
-
       if (delErr) throw delErr;
 
-      // Insert fresh items
       if (items.length > 0) {
         const { error: insErr } = await supabase
           .from('prep_plan_items')
           .insert(items.map(item => ({ ...item, plan_id: plan.id })));
-
         if (insErr) throw insErr;
       }
 
@@ -104,20 +88,19 @@ export function useSavePrepPlan() {
     onSuccess: (_data, { shift, date }) => {
       qc.invalidateQueries({ queryKey: ['prep_plan', shift, date] });
       qc.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      toast.success('Prep plan saved');
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to save plan: ${err.message}`);
     },
   });
 }
 
-// ---------------------------------------------------------------------------
-// useTogglePrepItem — mark a single item done/undone
-// ---------------------------------------------------------------------------
 export function useTogglePrepItem() {
   const qc = useQueryClient();
-
   return useMutation({
     mutationFn: async ({
-      itemId,
-      isDone,
+      itemId, isDone,
     }: {
       itemId: string;
       isDone: boolean;
@@ -126,29 +109,24 @@ export function useTogglePrepItem() {
     }) => {
       const { error } = await supabase
         .from('prep_plan_items')
-        .update({
-          is_done: isDone,
-          done_at: isDone ? new Date().toISOString() : null,
-        })
+        .update({ is_done: isDone, done_at: isDone ? new Date().toISOString() : null })
         .eq('id', itemId);
-
       if (error) throw error;
     },
-    onSuccess: (_data, { shift, date }) => {
+    onSuccess: (_data, { shift, date, isDone, itemId: _itemId }) => {
       qc.invalidateQueries({ queryKey: ['prep_plan', shift, date] });
-      // par_levels.current_stock updated by DB trigger — invalidate so UI reflects it
       qc.invalidateQueries({ queryKey: ['par_levels'] });
       qc.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      if (isDone) toast.success('Item marked done');
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to update item: ${err.message}`);
     },
   });
 }
 
-// ---------------------------------------------------------------------------
-// useCompletePrepPlan — mark all undone items done + stamp plan completed
-// ---------------------------------------------------------------------------
 export function useCompletePrepPlan() {
   const qc = useQueryClient();
-
   return useMutation({
     mutationFn: async ({
       planId,
@@ -157,27 +135,17 @@ export function useCompletePrepPlan() {
       shift: string;
       date: string;
     }) => {
-      // Mark all remaining undone items done (trigger fires per row)
       const { error: itemsErr } = await supabase
         .from('prep_plan_items')
-        .update({
-          is_done: true,
-          done_at: new Date().toISOString(),
-        })
+        .update({ is_done: true, done_at: new Date().toISOString() })
         .eq('plan_id', planId)
         .eq('is_done', false);
-
       if (itemsErr) throw itemsErr;
 
-      // Stamp the plan itself
       const { error: planErr } = await supabase
         .from('prep_plans')
-        .update({
-          is_completed: true,
-          completed_at: new Date().toISOString(),
-        })
+        .update({ is_completed: true, completed_at: new Date().toISOString() })
         .eq('id', planId);
-
       if (planErr) throw planErr;
     },
     onSuccess: (_data, { shift, date }) => {
@@ -185,6 +153,10 @@ export function useCompletePrepPlan() {
       qc.invalidateQueries({ queryKey: ['prep_history'] });
       qc.invalidateQueries({ queryKey: ['par_levels'] });
       qc.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      toast.success('Shift complete! 🎉');
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to complete shift: ${err.message}`);
     },
   });
 }

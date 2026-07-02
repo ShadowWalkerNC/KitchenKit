@@ -1,112 +1,80 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/context/AuthContext';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { supabase } from '../lib/supabase';
 
 export interface DBParLevel {
   id: string;
   user_id: string;
   ingredient_name: string;
-  current_stock: number;
   par_amount: number;
+  current_stock: number;
   unit: string;
-  shifts: string[] | null;
-  created_at: string;
+  updated_at: string;
 }
 
-export interface ShiftPrepItem {
-  ingredient_name: string;
-  current_stock: number;
-  par_amount: number;
-  prep_amount: number;
-  unit: string;
-  recipe_id: string | null;
-  shifts: string[] | null;
-}
-
-// All par levels for the current user
 export function useParLevels() {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: ['par_levels', user?.id],
-    enabled: !!user,
+  return useQuery<DBParLevel[]>({
+    queryKey: ['par_levels'],
     queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
       const { data, error } = await supabase
         .from('par_levels')
         .select('*')
-        .order('ingredient_name');
+        .eq('user_id', user.id)
+        .order('ingredient_name', { ascending: true });
       if (error) throw error;
-      return (data ?? []) as DBParLevel[];
-    },
-  });
-}
-
-// Items that still need prep for a specific shift
-export function useShiftPrep(shift: string, date: string) {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: ['shift_prep', user?.id, shift, date],
-    enabled: !!user,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .rpc('get_shift_prep_items', { p_shift: shift, p_date: date });
-      if (error) throw error;
-      return (data ?? []) as ShiftPrepItem[];
+      return data as DBParLevel[];
     },
   });
 }
 
 export function useUpsertParLevel() {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
+    mutationFn: async (payload: {
+      id?: string;
       ingredient_name: string;
-      current_stock: number;
       par_amount: number;
+      current_stock: number;
       unit: string;
-      shifts?: string[];
     }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       const { error } = await supabase
         .from('par_levels')
         .upsert(
-          {
-            user_id:         user!.id,
-            ingredient_name: input.ingredient_name,
-            current_stock:   input.current_stock,
-            par_amount:      input.par_amount,
-            unit:            input.unit,
-            shifts:          input.shifts ?? [],
-          },
+          { ...payload, user_id: user.id },
           { onConflict: 'user_id,ingredient_name' }
         );
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['par_levels'] });
-      queryClient.invalidateQueries({ queryKey: ['shift_prep'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['par_levels'] });
+      qc.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      toast.success(variables.id ? 'Par level updated' : `"${variables.ingredient_name}" added`);
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to save par level: ${err.message}`);
     },
   });
 }
 
 export function useDeleteParLevel() {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (ingredientName: string) => {
-      const { error } = await supabase
-        .from('par_levels')
-        .delete()
-        .eq('user_id', user!.id)
-        .eq('ingredient_name', ingredientName);
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('par_levels').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['par_levels'] });
-      queryClient.invalidateQueries({ queryKey: ['shift_prep'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      qc.invalidateQueries({ queryKey: ['par_levels'] });
+      qc.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      toast.success('Par item removed');
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to delete par item: ${err.message}`);
     },
   });
 }

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/context/AuthContext';
 import RequireAuth from '@/components/auth/RequireAuth';
 import Layout from '@/components/layout/Layout';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import LoginPage from '@/pages/LoginPage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import DashboardPage from '@/pages/DashboardPage';
@@ -10,6 +11,7 @@ import RecipeDetailPage from '@/pages/RecipeDetailPage';
 import PrepPlannerPage from '@/pages/PrepPlannerPage';
 import ParLevelsPage from '@/pages/ParLevelsPage';
 import PrepHistoryPage from '@/pages/PrepHistoryPage';
+import NotFoundPage from '@/pages/NotFoundPage';
 
 export default function App() {
   return (
@@ -24,7 +26,9 @@ export default function App() {
           path="/"
           element={
             <RequireAuth>
-              <Layout />
+              <ErrorBoundary>
+                <Layout />
+              </ErrorBoundary>
             </RequireAuth>
           }
         >
@@ -35,10 +39,11 @@ export default function App() {
           <Route path="prep"         element={<PrepPlannerPage />} />
           <Route path="par-levels"   element={<ParLevelsPage />} />
           <Route path="prep/history" element={<PrepHistoryPage />} />
+          <Route path="*"            element={<NotFoundPage />} />
         </Route>
 
-        {/* Catch-all */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* Public catch-all (unauthenticated unknown routes → login) */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </AuthProvider>
   );

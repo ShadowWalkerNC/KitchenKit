@@ -1,193 +1,191 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/context/AuthContext';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { supabase } from '../lib/supabase';
 import type { Recipe } from '@kitchenkit/ratio-engine';
-
-export interface DBRecipe {
-  id: string;
-  name: string;
-  description: string | null;
-  base_ingredient: string;
-  yield_unit: string;
-  tags: string[];
-  is_public: boolean;
-  created_at: string;
-  ingredients: DBIngredient[];
-}
 
 export interface DBIngredient {
   id: string;
+  recipe_id: string;
   name: string;
   ratio: number;
   unit: string;
   sort_order: number;
-  note: string | null;
 }
 
-export interface CreateRecipeInput {
-  name: string;
-  description?: string;
-  base_ingredient: string;
-  yield_unit?: string;
-  tags?: string[];
-  ingredients: { name: string; ratio: number; unit: string; sort_order?: number }[];
-}
-
-export interface UpdateRecipeInput {
+export interface DBRecipe {
   id: string;
+  user_id: string;
   name: string;
-  description?: string;
+  description: string | null;
   base_ingredient: string;
-  yield_unit?: string;
-  tags?: string[];
-  is_public?: boolean;
-  /** Full replacement — all existing ingredients are deleted and re-inserted */
-  ingredients: { name: string; ratio: number; unit: string; sort_order?: number }[];
+  yield_unit: string;
+  is_public: boolean;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  ingredients: DBIngredient[];
 }
 
-/** Map DB row → ratio-engine Recipe shape */
 export function toEngineRecipe(r: DBRecipe): Recipe {
-  return {
-    id: r.id,
-    name: r.name,
-    baseIngredient: r.base_ingredient,
-    yieldUnit: r.yield_unit,
-    ingredients: r.ingredients.map((i) => ({
-      name: i.name,
-      ratio: Number(i.ratio),
-      unit: i.unit,
-    })),
-  };
+  const ingredients: Record<string, number> = {};
+  for (const ing of r.ingredients) {
+    ingredients[ing.name] = Number(ing.ratio);
+  }
+  return { baseIngredient: r.base_ingredient, ingredients };
 }
 
+// ---------------------------------------------------------------------------
+// useRecipes
+// ---------------------------------------------------------------------------
 export function useRecipes() {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: ['recipes', user?.id],
-    enabled: !!user,
+  return useQuery<DBRecipe[]>({
+    queryKey: ['recipes'],
     queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
       const { data, error } = await supabase
         .from('recipes')
-        .select('*, ingredients(*)')
+        .select('*, ingredients:recipe_ingredients(*)')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as DBRecipe[];
+      return data as DBRecipe[];
     },
   });
 }
 
+// ---------------------------------------------------------------------------
+// useRecipe
+// ---------------------------------------------------------------------------
 export function useRecipe(id: string | undefined) {
-  return useQuery({
+  return useQuery<DBRecipe>({
     queryKey: ['recipe', id],
-    enabled: !!id,
     queryFn: async () => {
       const { data, error } = await supabase
-        .rpc('get_recipe_with_ingredients', { p_recipe_id: id });
+        .from('recipes')
+        .select('*, ingredients:recipe_ingredients(*)')
+        .eq('id', id!)
+        .single();
       if (error) throw error;
-      return data as DBRecipe | null;
+      return data as DBRecipe;
     },
+    enabled: Boolean(id),
   });
 }
 
+// ---------------------------------------------------------------------------
+// useCreateRecipe
+// ---------------------------------------------------------------------------
 export function useCreateRecipe() {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: CreateRecipeInput) => {
-      const { data: recipe, error: rErr } = await supabase
+    mutationFn: async (payload: {
+      name: string;
+      description?: string;
+      base_ingredient: string;
+      yield_unit: string;
+      tags?: string[];
+      ingredients: Array<{ name: string; ratio: number; unit: string; sort_order: number }>;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: recipe, error: recipeErr } = await supabase
         .from('recipes')
         .insert({
-          user_id:         user!.id,
-          name:            input.name,
-          description:     input.description ?? null,
-          base_ingredient: input.base_ingredient,
-          yield_unit:      input.yield_unit ?? 'g',
-          tags:            input.tags ?? [],
+          user_id:         user.id,
+          name:            payload.name,
+          description:     payload.description ?? null,
+          base_ingredient: payload.base_ingredient,
+          yield_unit:      payload.yield_unit,
+          tags:            payload.tags ?? [],
         })
         .select()
         .single();
-      if (rErr) throw rErr;
+      if (recipeErr) throw recipeErr;
 
-      const { error: iErr } = await supabase
-        .from('ingredients')
-        .insert(
-          input.ingredients.map((ing, idx) => ({
-            recipe_id:  recipe.id,
-            name:       ing.name,
-            ratio:      ing.ratio,
-            unit:       ing.unit,
-            sort_order: ing.sort_order ?? idx,
-          }))
-        );
-      if (iErr) throw iErr;
+      if (payload.ingredients.length > 0) {
+        const { error: ingErr } = await supabase
+          .from('recipe_ingredients')
+          .insert(payload.ingredients.map(ing => ({ ...ing, recipe_id: recipe.id })));
+        if (ingErr) throw ingErr;
+      }
+
       return recipe;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['recipes'] });
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['recipes'] });
+      toast.success(`Recipe "${data.name}" created`);
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to create recipe: ${err.message}`);
     },
   });
 }
 
+// ---------------------------------------------------------------------------
+// useUpdateRecipe
+// ---------------------------------------------------------------------------
 export function useUpdateRecipe() {
-  const queryClient = useQueryClient();
-
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: UpdateRecipeInput) => {
-      // 1. Patch the recipe header
-      const { error: rErr } = await supabase
+    mutationFn: async (payload: {
+      id: string;
+      name: string;
+      description?: string;
+      base_ingredient: string;
+      yield_unit: string;
+      tags?: string[];
+      ingredients: Array<{ name: string; ratio: number; unit: string; sort_order: number }>;
+    }) => {
+      const { error: recipeErr } = await supabase
         .from('recipes')
         .update({
-          name:            input.name,
-          description:     input.description ?? null,
-          base_ingredient: input.base_ingredient,
-          yield_unit:      input.yield_unit ?? 'g',
-          tags:            input.tags ?? [],
-          is_public:       input.is_public ?? false,
+          name:            payload.name,
+          description:     payload.description ?? null,
+          base_ingredient: payload.base_ingredient,
+          yield_unit:      payload.yield_unit,
+          tags:            payload.tags ?? [],
         })
-        .eq('id', input.id);
-      if (rErr) throw rErr;
+        .eq('id', payload.id);
+      if (recipeErr) throw recipeErr;
 
-      // 2. Replace all ingredients (delete + re-insert is simplest and
-      //    avoids stale sort_order or orphaned rows from renamed ingredients)
-      const { error: dErr } = await supabase
-        .from('ingredients')
-        .delete()
-        .eq('recipe_id', input.id);
-      if (dErr) throw dErr;
+      await supabase.from('recipe_ingredients').delete().eq('recipe_id', payload.id);
 
-      if (input.ingredients.length > 0) {
-        const { error: iErr } = await supabase
-          .from('ingredients')
-          .insert(
-            input.ingredients.map((ing, idx) => ({
-              recipe_id:  input.id,
-              name:       ing.name,
-              ratio:      ing.ratio,
-              unit:       ing.unit,
-              sort_order: ing.sort_order ?? idx,
-            }))
-          );
-        if (iErr) throw iErr;
+      if (payload.ingredients.length > 0) {
+        const { error: ingErr } = await supabase
+          .from('recipe_ingredients')
+          .insert(payload.ingredients.map(ing => ({ ...ing, recipe_id: payload.id })));
+        if (ingErr) throw ingErr;
       }
     },
-    onSuccess: (_data, vars) => {
-      // Refresh both the list and the detail cache
-      queryClient.invalidateQueries({ queryKey: ['recipes'] });
-      queryClient.invalidateQueries({ queryKey: ['recipe', vars.id] });
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['recipes'] });
+      qc.invalidateQueries({ queryKey: ['recipe', variables.id] });
+      toast.success('Recipe updated');
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to update recipe: ${err.message}`);
     },
   });
 }
 
+// ---------------------------------------------------------------------------
+// useDeleteRecipe
+// ---------------------------------------------------------------------------
 export function useDeleteRecipe() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('recipes').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      qc.invalidateQueries({ queryKey: ['recipes'] });
+      toast.success('Recipe deleted');
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to delete recipe: ${err.message}`);
     },
   });
 }
