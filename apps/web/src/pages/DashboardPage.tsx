@@ -1,4 +1,4 @@
-import { BookOpen, ClipboardList, Scale, AlertTriangle } from 'lucide-react';
+import { BookOpen, ClipboardList, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useDashboardStats } from '@/hooks/useDashboardStats';
 import { useAuth } from '@/context/AuthContext';
@@ -10,9 +10,27 @@ export default function DashboardPage() {
   const displayName = user?.email?.split('@')[0] ?? 'Chef';
 
   const cards = [
-    { label: 'Recipes',      value: stats?.recipeCount   ?? 0, icon: BookOpen,      href: '/recipes', color: 'text-brand-400' },
-    { label: 'Prep Plans',   value: stats?.parItemCount  ?? 0, icon: ClipboardList, href: '/prep',    color: 'text-emerald-400' },
-    { label: 'Scaled Today', value: 0,                         icon: Scale,         href: '/recipes', color: 'text-sky-400' },
+    {
+      label: 'Recipes',
+      value: stats?.recipeCount ?? 0,
+      icon: BookOpen,
+      href: '/recipes',
+      color: 'text-brand-400',
+    },
+    {
+      label: 'Active Plans',
+      value: stats?.activePlansCount ?? 0,
+      icon: ClipboardList,
+      href: '/prep',
+      color: 'text-emerald-400',
+    },
+    {
+      label: 'Completed Today',
+      value: stats?.completedToday ?? 0,
+      icon: CheckCircle2,
+      href: '/prep',
+      color: (stats?.completedToday ?? 0) > 0 ? 'text-emerald-400' : 'text-zinc-600',
+    },
     {
       label: 'Below Par',
       value: stats?.belowParCount ?? 0,
@@ -39,8 +57,8 @@ export default function DashboardPage() {
               <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{label}</span>
               <Icon size={16} className={`${color} transition-colors`} />
             </div>
-            <p className="text-3xl font-bold text-zinc-100">
-              {isLoading ? <span className="text-zinc-600 text-lg">...</span> : value}
+            <p className="text-3xl font-bold tabular-nums text-zinc-100">
+              {isLoading ? <span className="text-zinc-600 text-lg">…</span> : value}
             </p>
           </Link>
         ))}
@@ -53,10 +71,13 @@ export default function DashboardPage() {
             <AlertTriangle size={18} className="text-amber-400 shrink-0" />
             <div>
               <p className="text-sm font-semibold text-zinc-100">
-                {stats!.belowParCount} item{stats!.belowParCount !== 1 ? 's' : ''} below par
+                {stats!.belowParCount} ingredient{stats!.belowParCount !== 1 ? 's' : ''} below par level
               </p>
-              <Link to="/prep" className="text-xs text-amber-400 hover:text-amber-300 transition-colors">
-                Build prep plan →
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Build a prep plan to calculate what needs to be prepped today.
+              </p>
+              <Link to="/prep" className="text-xs text-amber-400 hover:text-amber-300 transition-colors mt-1 inline-block">
+                Open prep planner →
               </Link>
             </div>
           </div>

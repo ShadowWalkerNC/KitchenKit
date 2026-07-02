@@ -81,11 +81,12 @@ export function useSavePrepPlan() {
         .single();
       if (planErr) throw planErr;
 
-      // 2. Delete existing items so we start clean
+      // 2. Delete existing undone items so we start clean
       const { error: delErr } = await supabase
         .from('prep_plan_items')
         .delete()
-        .eq('prep_plan_id', plan.id);
+        .eq('prep_plan_id', plan.id)
+        .eq('is_done', false);
       if (delErr) throw delErr;
 
       // 3. Insert fresh items
@@ -110,6 +111,8 @@ export function useSavePrepPlan() {
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['prep_plan', user?.id, vars.shift, vars.date] });
+      // activePlansCount on dashboard changes when a plan is saved
+      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
     },
   });
 }
@@ -142,7 +145,7 @@ export function useCompletePrepPlan() {
     mutationFn: async ({ planId }: { planId: string }) => {
       const now = new Date().toISOString();
 
-      // Mark all items done
+      // Mark all remaining items done
       const { error: itemsErr } = await supabase
         .from('prep_plan_items')
         .update({ is_done: true, done_at: now })
@@ -159,8 +162,9 @@ export function useCompletePrepPlan() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['prep_plan', user?.id] });
-      // Also refresh stock stats on dashboard
+      // Refresh par levels (stock may have changed) and dashboard stats
       queryClient.invalidateQueries({ queryKey: ['par_levels'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
     },
   });
 }
