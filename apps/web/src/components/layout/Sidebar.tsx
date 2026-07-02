@@ -1,11 +1,13 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, ClipboardList, ChefHat } from 'lucide-react';
+import { LayoutDashboard, BookOpen, ClipboardList, ChefHat, Scale, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const nav = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/recipes',   icon: BookOpen,         label: 'Recipes' },
-  { to: '/prep',      icon: ClipboardList,    label: 'Prep Planner' },
+  { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/recipes',      icon: BookOpen,         label: 'Recipes' },
+  { to: '/prep',         icon: ClipboardList,    label: 'Prep Planner' },
+  { to: '/par-levels',   icon: Scale,            label: 'Par Levels' },
+  { to: '/prep/history', icon: History,          label: 'Prep History' },
 ];
 
 export default function Sidebar() {
@@ -23,6 +25,7 @@ export default function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            end={to === '/prep'}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',

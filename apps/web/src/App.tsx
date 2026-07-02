@@ -8,6 +8,8 @@ import DashboardPage from '@/pages/DashboardPage';
 import RecipesPage from '@/pages/RecipesPage';
 import RecipeDetailPage from '@/pages/RecipeDetailPage';
 import PrepPlannerPage from '@/pages/PrepPlannerPage';
+import ParLevelsPage from '@/pages/ParLevelsPage';
+import PrepHistoryPage from '@/pages/PrepHistoryPage';
 
 export default function App() {
   return (
@@ -27,10 +29,12 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="recipes"   element={<RecipesPage />} />
-          <Route path="recipes/:id" element={<RecipeDetailPage />} />
-          <Route path="prep"      element={<PrepPlannerPage />} />
+          <Route path="dashboard"    element={<DashboardPage />} />
+          <Route path="recipes"      element={<RecipesPage />} />
+          <Route path="recipes/:id"  element={<RecipeDetailPage />} />
+          <Route path="prep"         element={<PrepPlannerPage />} />
+          <Route path="par-levels"   element={<ParLevelsPage />} />
+          <Route path="prep/history" element={<PrepHistoryPage />} />
         </Route>
 
         {/* Catch-all */}

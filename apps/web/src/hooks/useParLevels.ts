@@ -4,23 +4,26 @@ import { useAuth } from '@/context/AuthContext';
 
 export interface DBParLevel {
   id: string;
+  user_id: string;
   ingredient_name: string;
-  par_amount: number;
   current_stock: number;
+  par_amount: number;
   unit: string;
-  recipe_id: string | null;
-  notes: string | null;
+  shifts: string[] | null;
+  created_at: string;
 }
 
-export interface DBShiftPrepItem {
+export interface ShiftPrepItem {
   ingredient_name: string;
+  current_stock: number;
+  par_amount: number;
   prep_amount: number;
   unit: string;
-  par_amount: number;
-  current_stock: number;
   recipe_id: string | null;
+  shifts: string[] | null;
 }
 
+// All par levels for the current user
 export function useParLevels() {
   const { user } = useAuth();
   return useQuery({
@@ -37,36 +40,17 @@ export function useParLevels() {
   });
 }
 
+// Items that still need prep for a specific shift
 export function useShiftPrep(shift: string, date: string) {
   const { user } = useAuth();
   return useQuery({
     queryKey: ['shift_prep', user?.id, shift, date],
     enabled: !!user,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('build_shift_prep', {
-        p_user_id: user!.id,
-        p_shift:   shift,
-        p_date:    date,
-      });
+      const { data, error } = await supabase
+        .rpc('get_shift_prep_items', { p_shift: shift, p_date: date });
       if (error) throw error;
-      return (data ?? []) as DBShiftPrepItem[];
-    },
-  });
-}
-
-export function useUpdateStock() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, current_stock }: { id: string; current_stock: number }) => {
-      const { error } = await supabase
-        .from('par_levels')
-        .update({ current_stock })
-        .eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['par_levels'] });
-      queryClient.invalidateQueries({ queryKey: ['shift_prep'] });
+      return (data ?? []) as ShiftPrepItem[];
     },
   });
 }
@@ -74,12 +58,26 @@ export function useUpdateStock() {
 export function useUpsertParLevel() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+
   return useMutation({
-    mutationFn: async (input: Omit<DBParLevel, 'id' | 'recipe_id' | 'notes'>) => {
+    mutationFn: async (input: {
+      ingredient_name: string;
+      current_stock: number;
+      par_amount: number;
+      unit: string;
+      shifts?: string[];
+    }) => {
       const { error } = await supabase
         .from('par_levels')
         .upsert(
-          { ...input, user_id: user!.id },
+          {
+            user_id:         user!.id,
+            ingredient_name: input.ingredient_name,
+            current_stock:   input.current_stock,
+            par_amount:      input.par_amount,
+            unit:            input.unit,
+            shifts:          input.shifts ?? [],
+          },
           { onConflict: 'user_id,ingredient_name' }
         );
       if (error) throw error;
@@ -87,6 +85,28 @@ export function useUpsertParLevel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['par_levels'] });
       queryClient.invalidateQueries({ queryKey: ['shift_prep'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+    },
+  });
+}
+
+export function useDeleteParLevel() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async (ingredientName: string) => {
+      const { error } = await supabase
+        .from('par_levels')
+        .delete()
+        .eq('user_id', user!.id)
+        .eq('ingredient_name', ingredientName);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['par_levels'] });
+      queryClient.invalidateQueries({ queryKey: ['shift_prep'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
     },
   });
 }

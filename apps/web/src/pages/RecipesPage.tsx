@@ -10,7 +10,6 @@ export default function RecipesPage() {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
 
-  // Collect all unique tags across every recipe, sorted alphabetically
   const allTags = useMemo(() => {
     const set = new Set<string>();
     recipes.forEach((r) => r.tags.forEach((t) => set.add(t)));
@@ -23,6 +22,7 @@ export default function RecipesPage() {
       const matchesText =
         !q ||
         r.name.toLowerCase().includes(q) ||
+        (r.description ?? '').toLowerCase().includes(q) ||
         r.tags.some((t) => t.toLowerCase().includes(q));
       const matchesTag = !activeTag || r.tags.includes(activeTag);
       return matchesText && matchesTag;
@@ -127,16 +127,19 @@ export default function RecipesPage() {
       {!isLoading && filtered.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((recipe) => {
-            const visibleTags = recipe.tags.slice(0, 2);
-            const overflowCount = recipe.tags.length - visibleTags.length;
+            const visibleTags    = recipe.tags.slice(0, 2);
+            const overflowCount  = recipe.tags.length - visibleTags.length;
             return (
               <Link
                 key={recipe.id}
                 to={`/recipes/${recipe.id}`}
                 className="card hover:border-brand-600/50 transition-colors block"
               >
-                <h3 className="font-semibold text-zinc-100 mb-1">{recipe.name}</h3>
-                <p className="text-xs text-zinc-500 mb-3">
+                <h3 className="font-semibold text-zinc-100 mb-1 truncate">{recipe.name}</h3>
+                {recipe.description && (
+                  <p className="text-xs text-zinc-500 mb-2 line-clamp-1">{recipe.description}</p>
+                )}
+                <p className="text-xs text-zinc-600 mb-3">
                   {recipe.ingredients?.length ?? 0} ingredient{(recipe.ingredients?.length ?? 0) !== 1 ? 's' : ''}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
