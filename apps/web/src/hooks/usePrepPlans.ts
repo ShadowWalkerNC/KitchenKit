@@ -1,58 +1,60 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/context/AuthContext';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '../lib/supabase';
 
 export interface DBPrepPlan {
   id: string;
   user_id: string;
   shift: string;
   plan_date: string;
-  notes: string | null;
   is_completed: boolean;
   completed_at: string | null;
   created_at: string;
-  items: DBPrepPlanItem[];
 }
 
 export interface DBPrepPlanItem {
   id: string;
-  prep_plan_id: string;
+  plan_id: string;
   ingredient_name: string;
   prep_amount: number;
   unit: string;
-  recipe_id: string | null;
   is_done: boolean;
   done_at: string | null;
-  note: string | null;
-  sort_order: number;
 }
 
-/** Load an existing saved prep plan for a given shift + date. */
+export interface DBPrepPlanWithItems extends DBPrepPlan {
+  items: DBPrepPlanItem[];
+}
+
+// ---------------------------------------------------------------------------
+// usePrepPlan — load saved plan for shift + date
+// ---------------------------------------------------------------------------
 export function usePrepPlan(shift: string, date: string) {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: ['prep_plan', user?.id, shift, date],
-    enabled: !!user,
+  return useQuery<DBPrepPlanWithItems | null>({
+    queryKey: ['prep_plan', shift, date],
     queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+
       const { data, error } = await supabase
         .from('prep_plans')
         .select('*, items:prep_plan_items(*)')
+        .eq('user_id', user.id)
         .eq('shift', shift)
         .eq('plan_date', date)
         .maybeSingle();
+
       if (error) throw error;
-      if (!data) return null;
-      const plan = data as DBPrepPlan & { items: DBPrepPlanItem[] };
-      plan.items = (plan.items ?? []).sort((a, b) => a.sort_order - b.sort_order);
-      return plan;
+      return data as DBPrepPlanWithItems | null;
     },
+    enabled: Boolean(shift && date),
   });
 }
 
-/** Save (upsert) a prep plan from the current shift prep calculation. */
+// ---------------------------------------------------------------------------
+// useSavePrepPlan — upsert plan header + replace undone items
+// ---------------------------------------------------------------------------
 export function useSavePrepPlan() {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const qc = useQueryClient();
 
   return useMutation({
     mutationFn: async ({
@@ -62,109 +64,127 @@ export function useSavePrepPlan() {
     }: {
       shift: string;
       date: string;
-      items: Array<{
-        ingredient_name: string;
-        prep_amount: number;
-        unit: string;
-        recipe_id?: string | null;
-        sort_order?: number;
-      }>;
+      items: Array<{ ingredient_name: string; prep_amount: number; unit: string }>;
     }) => {
-      // 1. Upsert the plan header
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Upsert plan header
       const { data: plan, error: planErr } = await supabase
         .from('prep_plans')
         .upsert(
-          { user_id: user!.id, shift, plan_date: date, is_completed: false },
+          { user_id: user.id, shift, plan_date: date },
           { onConflict: 'user_id,shift,plan_date' }
         )
         .select()
         .single();
+
       if (planErr) throw planErr;
 
-      // 2. Delete existing undone items so we start clean
+      // Delete undone items (preserve done ones)
       const { error: delErr } = await supabase
         .from('prep_plan_items')
         .delete()
-        .eq('prep_plan_id', plan.id)
+        .eq('plan_id', plan.id)
         .eq('is_done', false);
+
       if (delErr) throw delErr;
 
-      // 3. Insert fresh items
+      // Insert fresh items
       if (items.length > 0) {
-        const { error: insertErr } = await supabase
+        const { error: insErr } = await supabase
           .from('prep_plan_items')
-          .insert(
-            items.map((item, idx) => ({
-              prep_plan_id:    plan.id,
-              ingredient_name: item.ingredient_name,
-              prep_amount:     item.prep_amount,
-              unit:            item.unit,
-              recipe_id:       item.recipe_id ?? null,
-              sort_order:      item.sort_order ?? idx,
-              is_done:         false,
-            }))
-          );
-        if (insertErr) throw insertErr;
+          .insert(items.map(item => ({ ...item, plan_id: plan.id })));
+
+        if (insErr) throw insErr;
       }
 
       return plan as DBPrepPlan;
     },
-    onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['prep_plan', user?.id, vars.shift, vars.date] });
-      // activePlansCount on dashboard changes when a plan is saved
-      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+    onSuccess: (_data, { shift, date }) => {
+      qc.invalidateQueries({ queryKey: ['prep_plan', shift, date] });
+      qc.invalidateQueries({ queryKey: ['dashboard_stats'] });
     },
   });
 }
 
-/** Toggle a single prep plan item done/undone. */
+// ---------------------------------------------------------------------------
+// useTogglePrepItem — mark a single item done/undone
+// ---------------------------------------------------------------------------
 export function useTogglePrepItem() {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, is_done }: { id: string; is_done: boolean }) => {
+    mutationFn: async ({
+      itemId,
+      isDone,
+    }: {
+      itemId: string;
+      isDone: boolean;
+      shift: string;
+      date: string;
+    }) => {
       const { error } = await supabase
         .from('prep_plan_items')
-        .update({ is_done, done_at: is_done ? new Date().toISOString() : null })
-        .eq('id', id);
+        .update({
+          is_done: isDone,
+          done_at: isDone ? new Date().toISOString() : null,
+        })
+        .eq('id', itemId);
+
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['prep_plan', user?.id] });
+    onSuccess: (_data, { shift, date }) => {
+      qc.invalidateQueries({ queryKey: ['prep_plan', shift, date] });
+      // par_levels.current_stock updated by DB trigger — invalidate so UI reflects it
+      qc.invalidateQueries({ queryKey: ['par_levels'] });
+      qc.invalidateQueries({ queryKey: ['dashboard_stats'] });
     },
   });
 }
 
-/** Mark the entire prep plan as complete. */
+// ---------------------------------------------------------------------------
+// useCompletePrepPlan — mark all undone items done + stamp plan completed
+// ---------------------------------------------------------------------------
 export function useCompletePrepPlan() {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ planId }: { planId: string }) => {
-      const now = new Date().toISOString();
-
-      // Mark all remaining items done
+    mutationFn: async ({
+      planId,
+    }: {
+      planId: string;
+      shift: string;
+      date: string;
+    }) => {
+      // Mark all remaining undone items done (trigger fires per row)
       const { error: itemsErr } = await supabase
         .from('prep_plan_items')
-        .update({ is_done: true, done_at: now })
-        .eq('prep_plan_id', planId)
+        .update({
+          is_done: true,
+          done_at: new Date().toISOString(),
+        })
+        .eq('plan_id', planId)
         .eq('is_done', false);
+
       if (itemsErr) throw itemsErr;
 
-      // Mark plan complete
+      // Stamp the plan itself
       const { error: planErr } = await supabase
         .from('prep_plans')
-        .update({ is_completed: true, completed_at: now })
+        .update({
+          is_completed: true,
+          completed_at: new Date().toISOString(),
+        })
         .eq('id', planId);
+
       if (planErr) throw planErr;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['prep_plan', user?.id] });
-      // Refresh par levels (stock may have changed) and dashboard stats
-      queryClient.invalidateQueries({ queryKey: ['par_levels'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+    onSuccess: (_data, { shift, date }) => {
+      qc.invalidateQueries({ queryKey: ['prep_plan', shift, date] });
+      qc.invalidateQueries({ queryKey: ['prep_history'] });
+      qc.invalidateQueries({ queryKey: ['par_levels'] });
+      qc.invalidateQueries({ queryKey: ['dashboard_stats'] });
     },
   });
 }

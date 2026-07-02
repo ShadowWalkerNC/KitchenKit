@@ -1,44 +1,46 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/context/AuthContext';
-import type { DBPrepPlan, DBPrepPlanItem } from './usePrepPlans';
-
-export interface PrepHistoryPage {
-  plans: DBPrepPlan[];
-  hasMore: boolean;
-}
+import { supabase } from '../lib/supabase';
+import type { DBPrepPlanWithItems } from './usePrepPlans';
 
 const PAGE_SIZE = 20;
 
-export function usePrepHistory(page = 0) {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: ['prep_history', user?.id, page],
-    enabled: !!user,
-    queryFn: async (): Promise<PrepHistoryPage> => {
-      const from = page * PAGE_SIZE;
-      const to   = from + PAGE_SIZE; // fetch one extra to detect hasMore
+export function usePrepHistory() {
+  const [page, setPage] = useState(0);
 
+  const query = useQuery<{ plans: DBPrepPlanWithItems[]; hasMore: boolean }>({
+    queryKey: ['prep_history', page],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { plans: [], hasMore: false };
+
+      // Fetch PAGE_SIZE + 1 to detect if more pages exist without a separate count query
       const { data, error } = await supabase
         .from('prep_plans')
         .select('*, items:prep_plan_items(*)')
+        .eq('user_id', user.id)
         .eq('is_completed', true)
         .order('plan_date', { ascending: false })
         .order('created_at', { ascending: false })
-        .range(from, to);
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
       if (error) throw error;
 
-      const rows = (data ?? []) as (DBPrepPlan & { items: DBPrepPlanItem[] })[];
+      const rows = (data ?? []) as DBPrepPlanWithItems[];
       const hasMore = rows.length > PAGE_SIZE;
-      const plans   = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
 
-      // Sort items within each plan by sort_order
-      plans.forEach((p) => {
-        p.items = (p.items ?? []).sort((a, b) => a.sort_order - b.sort_order);
-      });
-
-      return { plans, hasMore };
+      return {
+        plans: hasMore ? rows.slice(0, PAGE_SIZE) : rows,
+        hasMore,
+      };
     },
+    placeholderData: (prev) => prev,
   });
+
+  return {
+    ...query,
+    page,
+    nextPage: () => setPage((p) => p + 1),
+    prevPage: () => setPage((p) => Math.max(0, p - 1)),
+  };
 }

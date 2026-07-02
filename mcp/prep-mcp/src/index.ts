@@ -3,10 +3,12 @@
  * MCP server exposing KitchenKit shift prep tools to CulinaryOS AI.
  *
  * Tools:
- *   build_shift_prep   — build a shift prep plan from par levels via Supabase RPC
- *   get_mise_en_place  — get scaled mise en place for a recipe
- *   project_batch_size — project batch size needed for a given cover count
- *   update_stock       — update current stock level for a par item
+ *   build_shift_prep    — build a shift prep plan from par levels via Supabase RPC
+ *   save_prep_plan      — persist a prep plan to the database
+ *   complete_prep_item  — mark a single prep plan item as done
+ *   get_mise_en_place   — get scaled mise en place for a recipe
+ *   project_batch_size  — project batch size needed for a given cover count
+ *   update_stock        — update current stock level for a par item
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -26,7 +28,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false },
 });
 
-const server = new McpServer({ name: 'prep-mcp', version: '0.2.0' });
+const server = new McpServer({ name: 'prep-mcp', version: '0.3.0' });
 
 // ---------------------------------------------------------------------------
 // build_shift_prep
@@ -84,6 +86,121 @@ server.tool(
 );
 
 // ---------------------------------------------------------------------------
+// save_prep_plan
+// ---------------------------------------------------------------------------
+server.tool(
+  'save_prep_plan',
+  'Persist a prep plan to the database. Upserts the plan header and replaces undone items. Returns the plan ID.',
+  {
+    user_id: z.string().uuid().describe('KitchenKit user UUID'),
+    shift:   z.enum(['AM', 'PM', 'Brunch', 'Dinner', 'Overnight', 'Custom']).describe('Shift name'),
+    date:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Date YYYY-MM-DD (defaults to today)'),
+    items:   z.array(z.object({
+      ingredient_name: z.string(),
+      prep_amount:     z.number().positive(),
+      unit:            z.string(),
+    })).describe('Items to prep'),
+  },
+  async ({ user_id, shift, date, items }) => {
+    const planDate = date ?? new Date().toISOString().slice(0, 10);
+
+    const { data: plan, error: planErr } = await supabase
+      .from('prep_plans')
+      .upsert(
+        { user_id, shift, plan_date: planDate },
+        { onConflict: 'user_id,shift,plan_date' }
+      )
+      .select()
+      .single();
+
+    if (planErr) {
+      return { content: [{ type: 'text', text: `Error upserting plan: ${planErr.message}` }], isError: true };
+    }
+
+    const { error: delErr } = await supabase
+      .from('prep_plan_items')
+      .delete()
+      .eq('plan_id', plan.id)
+      .eq('is_done', false);
+
+    if (delErr) {
+      return { content: [{ type: 'text', text: `Error clearing items: ${delErr.message}` }], isError: true };
+    }
+
+    if (items.length > 0) {
+      const { error: insErr } = await supabase
+        .from('prep_plan_items')
+        .insert(items.map(item => ({ ...item, plan_id: plan.id })));
+
+      if (insErr) {
+        return { content: [{ type: 'text', text: `Error inserting items: ${insErr.message}` }], isError: true };
+      }
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: `Saved ${shift} prep plan for ${planDate}. Plan ID: ${plan.id}. ${items.length} item(s) queued.`,
+      }],
+    };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// complete_prep_item
+// ---------------------------------------------------------------------------
+server.tool(
+  'complete_prep_item',
+  'Mark a single prep plan item as done. Returns updated plan progress (done / total).',
+  {
+    item_id: z.string().uuid().describe('UUID of the prep_plan_items row to mark done'),
+  },
+  async ({ item_id }) => {
+    // Mark the item done
+    const { data: item, error: itemErr } = await supabase
+      .from('prep_plan_items')
+      .update({ is_done: true, done_at: new Date().toISOString() })
+      .eq('id', item_id)
+      .select('plan_id, ingredient_name, prep_amount, unit')
+      .single();
+
+    if (itemErr) {
+      return { content: [{ type: 'text', text: `Error: ${itemErr.message}` }], isError: true };
+    }
+
+    // Fetch plan progress summary
+    const { data: allItems, error: progErr } = await supabase
+      .from('prep_plan_items')
+      .select('is_done')
+      .eq('plan_id', item.plan_id);
+
+    if (progErr) {
+      return {
+        content: [{
+          type: 'text',
+          text: `✅ Marked "${item.ingredient_name}" done (+${item.prep_amount}${item.unit}).`,
+        }],
+      };
+    }
+
+    const total = allItems?.length ?? 0;
+    const done  = allItems?.filter((r: { is_done: boolean }) => r.is_done).length ?? 0;
+    const allDone = done === total;
+
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✅ Marked "${item.ingredient_name}" done (+${item.prep_amount}${item.unit}).`,
+          `Progress: ${done}/${total} items complete.`,
+          allDone ? '🎉 All items done — shift prep complete!' : '',
+        ].filter(Boolean).join('\n'),
+      }],
+    };
+  }
+);
+
+// ---------------------------------------------------------------------------
 // get_mise_en_place
 // ---------------------------------------------------------------------------
 server.tool(
@@ -131,8 +248,8 @@ server.tool(
     waste_factor:   z.number().min(1).max(2).optional().default(1.1).describe('Waste buffer multiplier (default 1.1 = 10%)'),
   },
   async ({ portion_weight, covers, waste_factor }) => {
-    const wf           = waste_factor ?? 1.1;
-    const rawBatch     = portion_weight * covers;
+    const wf            = waste_factor ?? 1.1;
+    const rawBatch      = portion_weight * covers;
     const bufferedBatch = rawBatch * wf;
 
     const lines = [
