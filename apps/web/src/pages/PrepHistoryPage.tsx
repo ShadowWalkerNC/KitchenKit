@@ -14,8 +14,7 @@ function formatTime(isoStr: string | null) {
 }
 
 export default function PrepHistoryPage() {
-  const [page, setPage] = useState(0);
-  const { data, isLoading, error } = usePrepHistory(page);
+  const { data, isLoading, error, page, nextPage, prevPage } = usePrepHistory();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   function toggle(id: string) {
@@ -65,7 +64,7 @@ export default function PrepHistoryPage() {
       {!isLoading && !error && data && data.plans.length > 0 && (
         <div className="space-y-2">
           {data.plans.map((plan) => {
-            const isOpen   = expanded.has(plan.id);
+            const isOpen    = expanded.has(plan.id);
             const doneCount = plan.items.filter((i) => i.is_done).length;
             return (
               <div key={plan.id} className="card p-0 overflow-hidden">
@@ -104,7 +103,7 @@ export default function PrepHistoryPage() {
                         <div key={item.id} className="flex items-center gap-2.5 py-1.5">
                           {item.is_done
                             ? <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-                            : <Circle      size={14} className="text-zinc-700 shrink-0" />
+                            : <Circle       size={14} className="text-zinc-700 shrink-0" />
                           }
                           <span className={`flex-1 text-sm ${
                             item.is_done ? 'text-zinc-500 line-through' : 'text-zinc-300'
@@ -132,7 +131,7 @@ export default function PrepHistoryPage() {
       {!isLoading && data && (
         <div className="flex items-center justify-between pt-2">
           <button
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            onClick={prevPage}
             disabled={page === 0}
             className="btn-ghost text-sm disabled:opacity-30"
           >
@@ -140,7 +139,7 @@ export default function PrepHistoryPage() {
           </button>
           <span className="text-xs text-zinc-600">Page {page + 1}</span>
           <button
-            onClick={() => setPage((p) => p + 1)}
+            onClick={nextPage}
             disabled={!data.hasMore}
             className="btn-ghost text-sm disabled:opacity-30"
           >
