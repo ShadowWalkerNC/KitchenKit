@@ -155,7 +155,7 @@ export default function PrepPlannerPage() {
                     </button>
                     {allDone && !planCompleted && (
                       <button
-                        onClick={() => completePlan({ planId: savedPlan!.id })}
+                        onClick={() => completePlan({ planId: savedPlan!.id, shift, date: today })}
                         disabled={isCompleting}
                         className="btn-primary flex items-center gap-1.5 text-sm"
                       >
@@ -196,7 +196,14 @@ export default function PrepPlannerPage() {
                             type="checkbox"
                             checked={item.is_done}
                             disabled={isToggling || planCompleted}
-                            onChange={() => toggleItem({ id: item.id, is_done: !item.is_done })}
+                            onChange={() =>
+                              toggleItem({
+                                itemId: item.id,
+                                isDone: !item.is_done,
+                                shift,
+                                date: today,
+                              })
+                            }
                             className="w-4 h-4 rounded accent-brand-600 shrink-0"
                           />
                           <span className={`flex-1 text-sm font-medium truncate ${

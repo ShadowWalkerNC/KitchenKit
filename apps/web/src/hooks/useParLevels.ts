@@ -12,6 +12,15 @@ export interface DBParLevel {
   updated_at: string;
 }
 
+export interface ShiftPrepItem {
+  ingredient_name: string;
+  current_stock: number;
+  par_amount: number;
+  prep_amount: number;
+  unit: string;
+  recipe_id: string | null;
+}
+
 export function useParLevels() {
   return useQuery<DBParLevel[]>({
     queryKey: ['par_levels'],
@@ -29,6 +38,39 @@ export function useParLevels() {
   });
 }
 
+/**
+ * Returns only items that are below par, with prep_amount pre-calculated.
+ * shift and date params are accepted for query-key scoping / future
+ * shift-specific par levels, but currently all par levels apply to every shift.
+ */
+export function useShiftPrep(shift: string, date: string) {
+  return useQuery<ShiftPrepItem[]>({
+    queryKey: ['shift_prep', shift, date],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('par_levels')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('ingredient_name', { ascending: true });
+      if (error) throw error;
+      const rows = (data ?? []) as DBParLevel[];
+      return rows
+        .filter((r) => Number(r.current_stock) < Number(r.par_amount))
+        .map((r) => ({
+          ingredient_name: r.ingredient_name,
+          current_stock:   Number(r.current_stock),
+          par_amount:      Number(r.par_amount),
+          prep_amount:     Number(r.par_amount) - Number(r.current_stock),
+          unit:            r.unit,
+          recipe_id:       null,
+        }));
+    },
+    enabled: Boolean(shift && date),
+  });
+}
+
 export function useUpsertParLevel() {
   const qc = useQueryClient();
   return useMutation({
@@ -41,7 +83,6 @@ export function useUpsertParLevel() {
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-
       const { error } = await supabase
         .from('par_levels')
         .upsert(
