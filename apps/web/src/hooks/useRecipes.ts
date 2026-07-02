@@ -33,6 +33,18 @@ export interface CreateRecipeInput {
   ingredients: { name: string; ratio: number; unit: string; sort_order?: number }[];
 }
 
+export interface UpdateRecipeInput {
+  id: string;
+  name: string;
+  description?: string;
+  base_ingredient: string;
+  yield_unit?: string;
+  tags?: string[];
+  is_public?: boolean;
+  /** Full replacement — all existing ingredients are deleted and re-inserted */
+  ingredients: { name: string; ratio: number; unit: string; sort_order?: number }[];
+}
+
 /** Map DB row → ratio-engine Recipe shape */
 export function toEngineRecipe(r: DBRecipe): Recipe {
   return {
@@ -83,22 +95,20 @@ export function useCreateRecipe() {
 
   return useMutation({
     mutationFn: async (input: CreateRecipeInput) => {
-      // 1. Insert recipe
       const { data: recipe, error: rErr } = await supabase
         .from('recipes')
         .insert({
-          user_id:        user!.id,
-          name:           input.name,
-          description:    input.description ?? null,
+          user_id:         user!.id,
+          name:            input.name,
+          description:     input.description ?? null,
           base_ingredient: input.base_ingredient,
-          yield_unit:     input.yield_unit ?? 'g',
-          tags:           input.tags ?? [],
+          yield_unit:      input.yield_unit ?? 'g',
+          tags:            input.tags ?? [],
         })
         .select()
         .single();
       if (rErr) throw rErr;
 
-      // 2. Insert ingredients
       const { error: iErr } = await supabase
         .from('ingredients')
         .insert(
@@ -115,6 +125,56 @@ export function useCreateRecipe() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
+    },
+  });
+}
+
+export function useUpdateRecipe() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: UpdateRecipeInput) => {
+      // 1. Patch the recipe header
+      const { error: rErr } = await supabase
+        .from('recipes')
+        .update({
+          name:            input.name,
+          description:     input.description ?? null,
+          base_ingredient: input.base_ingredient,
+          yield_unit:      input.yield_unit ?? 'g',
+          tags:            input.tags ?? [],
+          is_public:       input.is_public ?? false,
+        })
+        .eq('id', input.id);
+      if (rErr) throw rErr;
+
+      // 2. Replace all ingredients (delete + re-insert is simplest and
+      //    avoids stale sort_order or orphaned rows from renamed ingredients)
+      const { error: dErr } = await supabase
+        .from('ingredients')
+        .delete()
+        .eq('recipe_id', input.id);
+      if (dErr) throw dErr;
+
+      if (input.ingredients.length > 0) {
+        const { error: iErr } = await supabase
+          .from('ingredients')
+          .insert(
+            input.ingredients.map((ing, idx) => ({
+              recipe_id:  input.id,
+              name:       ing.name,
+              ratio:      ing.ratio,
+              unit:       ing.unit,
+              sort_order: ing.sort_order ?? idx,
+            }))
+          );
+        if (iErr) throw iErr;
+      }
+    },
+    onSuccess: (_data, vars) => {
+      // Refresh both the list and the detail cache
+      queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      queryClient.invalidateQueries({ queryKey: ['recipe', vars.id] });
     },
   });
 }

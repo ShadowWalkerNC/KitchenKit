@@ -1,13 +1,18 @@
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Scale, Loader2, AlertCircle } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Scale, Loader2, AlertCircle, Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { useRecipe, toEngineRecipe } from '@/hooks/useRecipes';
+import { useRecipe, toEngineRecipe, useDeleteRecipe } from '@/hooks/useRecipes';
 import { scaleRecipe } from '@kitchenkit/ratio-engine';
+import EditRecipeModal from '@/components/recipes/EditRecipeModal';
 
 export default function RecipeDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { data: recipe, isLoading, error } = useRecipe(id);
+  const { mutate: deleteRecipe, isPending: isDeleting } = useDeleteRecipe();
+
   const [baseWeight, setBaseWeight] = useState(500);
+  const [showEdit, setShowEdit]     = useState(false);
 
   if (isLoading) {
     return (
@@ -36,11 +41,40 @@ export default function RecipeDetailPage() {
   const engineRecipe = toEngineRecipe(recipe);
   const scaled = scaleRecipe(engineRecipe, baseWeight);
 
+  function handleDelete() {
+    if (!confirm(`Delete "${recipe!.name}"? This cannot be undone.`)) return;
+    deleteRecipe(recipe!.id, {
+      onSuccess: () => navigate('/recipes'),
+    });
+  }
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <Link to="/recipes" className="btn-ghost inline-flex items-center gap-1.5 text-sm -ml-3">
-        <ArrowLeft size={15} /> Recipes
-      </Link>
+      {/* Back + action row */}
+      <div className="flex items-center justify-between">
+        <Link to="/recipes" className="btn-ghost inline-flex items-center gap-1.5 text-sm -ml-3">
+          <ArrowLeft size={15} /> Recipes
+        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowEdit(true)}
+            className="btn-ghost flex items-center gap-1.5 text-sm"
+          >
+            <Pencil size={14} /> Edit
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="btn-ghost flex items-center gap-1.5 text-sm text-zinc-500 hover:text-red-400 transition-colors disabled:opacity-50"
+          >
+            {isDeleting
+              ? <Loader2 size={14} className="animate-spin" />
+              : <Trash2 size={14} />
+            }
+            Delete
+          </button>
+        </div>
+      </div>
 
       {/* Header */}
       <div>
@@ -78,9 +112,13 @@ export default function RecipeDetailPage() {
           <label className="text-sm text-zinc-400 shrink-0">
             Base weight ({recipe.yield_unit})
           </label>
-          <input type="number" min={1} value={baseWeight}
+          <input
+            type="number"
+            min={1}
+            value={baseWeight}
             onChange={(e) => setBaseWeight(Number(e.target.value))}
-            className="input max-w-32" />
+            className="input max-w-32"
+          />
         </div>
       </div>
 
@@ -102,10 +140,10 @@ export default function RecipeDetailPage() {
               .map((ing) => (
                 <tr key={ing.id} className="hover:bg-surface/50 transition-colors">
                   <td className="py-2.5 font-mono text-zinc-300">{ing.name}</td>
-                  <td className="py-2.5 text-right text-zinc-500">
+                  <td className="py-2.5 text-right text-zinc-500 tabular-nums">
                     {(Number(ing.ratio) * 100).toFixed(1)}%
                   </td>
-                  <td className="py-2.5 text-right font-semibold text-zinc-100">
+                  <td className="py-2.5 text-right font-semibold text-zinc-100 tabular-nums">
                     {(scaled[ing.name] ?? 0).toFixed(1)}{ing.unit}
                   </td>
                 </tr>
@@ -113,6 +151,14 @@ export default function RecipeDetailPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Edit modal */}
+      {showEdit && (
+        <EditRecipeModal
+          recipe={recipe}
+          onClose={() => setShowEdit(false)}
+        />
+      )}
     </div>
   );
 }
