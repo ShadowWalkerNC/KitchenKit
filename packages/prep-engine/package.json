@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "description": "Shift prep planning engine — par levels, mise en place, batch projections.",
   "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "type": "module",
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",

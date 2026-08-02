@@ -1,11 +1,12 @@
 import {
   ClipboardList, Plus, Loader2, Check, RefreshCw,
-  Save, CheckCheck, Pencil,
+  Save, CheckCheck, Pencil, Printer,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useShiftPrep, useParLevels, type DBParLevel } from '@/hooks/useParLevels';
 import { usePrepPlan, useSavePrepPlan, useTogglePrepItem, useCompletePrepPlan } from '@/hooks/usePrepPlans';
 import ParLevelModal from '@/components/prep/ParLevelModal';
+import StationExportModal from '@/components/prep/StationExportModal';
 
 const SHIFTS = ['AM', 'PM', 'Brunch', 'Dinner'] as const;
 type Shift = typeof SHIFTS[number];
@@ -14,6 +15,7 @@ export default function PrepPlannerPage() {
   const [shift, setShift]                   = useState<Shift>('AM');
   const [showAddItem, setShowAddItem]       = useState(false);
   const [editingParItem, setEditingParItem] = useState<DBParLevel | null>(null);
+  const [showStationModal, setShowStationModal] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: parItems = [], isLoading: parLoading, error: parError, refetch } = useShiftPrep(shift, today);
@@ -61,6 +63,13 @@ export default function PrepPlannerPage() {
           <p className="text-sm text-zinc-500 mt-0.5">{today}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowStationModal(true)}
+            className="btn-ghost flex items-center gap-1.5 text-sm"
+            title="Print or view station prep sheet"
+          >
+            <Printer size={15} /> Station Sheet
+          </button>
           <button
             onClick={() => refetch()}
             className="btn-ghost flex items-center gap-1.5 text-sm"
@@ -325,6 +334,35 @@ export default function PrepPlannerPage() {
             setEditingParItem(null);
             refetch();
           }}
+        />
+      )}
+
+      {/* Station Sheet export/print modal */}
+      {showStationModal && (
+        <StationExportModal
+          shift={shift}
+          date={today}
+          items={
+            hasSavedPlan
+              ? savedItems.map((item) => ({
+                  id: item.id,
+                  ingredient_name: item.ingredient_name,
+                  prep_amount: item.prep_amount,
+                  unit: item.unit,
+                  is_done: item.is_done,
+                  note: item.note,
+                }))
+              : parItems.map((item) => ({
+                  ingredient_name: item.ingredient_name,
+                  prep_amount: item.prep_amount,
+                  unit: item.unit,
+                  is_done: false,
+                }))
+          }
+          isSavedPlan={hasSavedPlan}
+          planCompleted={planCompleted}
+          completedAt={savedPlan?.completed_at}
+          onClose={() => setShowStationModal(false)}
         />
       )}
     </div>

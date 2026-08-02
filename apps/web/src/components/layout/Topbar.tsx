@@ -4,9 +4,10 @@ import { useAuth } from '@/context/AuthContext';
 import { signOut } from '@/lib/auth';
 
 const titles: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/recipes':   'Recipes',
-  '/prep':      'Prep Planner',
+  '/dashboard':  'Dashboard',
+  '/recipes':    'Recipes',
+  '/prep':       'Prep Planner',
+  '/par-levels': 'Par Levels',
 };
 
 export default function Topbar() {

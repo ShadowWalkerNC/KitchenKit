@@ -8,9 +8,9 @@ export default function ParLevelsPage() {
   const { data: parLevels = [], isLoading, error } = useParLevels();
   const { mutate: deleteParLevel, isPending: isDeleting } = useDeleteParLevel();
 
-  const [showAdd, setShowAdd]           = useState(false);
-  const [editing, setEditing]           = useState<DBParLevel | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null); // ingredient_name
+  const [showAdd, setShowAdd]             = useState(false);
+  const [editing, setEditing]             = useState<DBParLevel | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<DBParLevel | null>(null);
 
   const sorted = [...parLevels].sort((a, b) =>
     a.ingredient_name.localeCompare(b.ingredient_name)
@@ -80,7 +80,7 @@ export default function ParLevelsPage() {
             </thead>
             <tbody className="divide-y divide-surface-border">
               {sorted.map((item) => (
-                <tr key={item.ingredient_name} className="group hover:bg-surface/40 transition-colors">
+                <tr key={item.id} className="group hover:bg-surface/40 transition-colors">
                   <td className="py-3 font-medium text-zinc-200">{item.ingredient_name}</td>
                   <td className="py-3 text-right tabular-nums text-zinc-400">{item.current_stock}</td>
                   <td className="py-3 text-right tabular-nums text-zinc-400">{item.par_amount}</td>
@@ -107,7 +107,7 @@ export default function ParLevelsPage() {
                         <Pencil size={13} />
                       </button>
                       <button
-                        onClick={() => setConfirmDelete(item.ingredient_name)}
+                        onClick={() => setConfirmDelete(item)}
                         className="p-1.5 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                         aria-label={`Delete ${item.ingredient_name}`}
                         title="Delete"
@@ -129,7 +129,7 @@ export default function ParLevelsPage() {
           <div className="card max-w-sm w-full space-y-4">
             <h3 className="font-semibold text-zinc-100">Delete par level?</h3>
             <p className="text-sm text-zinc-400">
-              Remove <span className="font-medium text-zinc-200">{confirmDelete}</span> from par levels.
+              Remove <span className="font-medium text-zinc-200">{confirmDelete.ingredient_name}</span> from par levels.
               Any saved prep plans that reference this item will be unaffected.
             </p>
             <div className="flex gap-3 justify-end">
@@ -141,7 +141,7 @@ export default function ParLevelsPage() {
               </button>
               <button
                 onClick={() => {
-                  deleteParLevel(confirmDelete);
+                  deleteParLevel(confirmDelete.id);
                   setConfirmDelete(null);
                 }}
                 disabled={isDeleting}

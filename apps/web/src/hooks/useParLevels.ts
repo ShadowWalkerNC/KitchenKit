@@ -9,6 +9,7 @@ export interface DBParLevel {
   par_amount: number;
   current_stock: number;
   unit: string;
+  shifts?: string[];
   updated_at: string;
 }
 

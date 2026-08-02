@@ -79,7 +79,7 @@ export default function RecipeDetailPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="text-2xl font-bold text-zinc-100">{recipe.name}</h2>
+          <h2 className="text-xl font-bold text-zinc-100">{recipe.name}</h2>
           {recipe.is_public && (
             <span className="badge bg-emerald-600/20 text-emerald-400">public</span>
           )}

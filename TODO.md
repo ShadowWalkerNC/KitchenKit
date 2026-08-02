@@ -9,7 +9,7 @@
 ## 🔴 Blocking — Must do before first deploy
 
 - [ ] Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to Vercel project environment variables
-- [ ] Run all migrations V001–V008 against production Supabase project
+- [ ] Run all migrations V001–V009 against production Supabase project
 - [ ] Verify Supabase magic link redirect URL is set to the Vercel production URL
 - [ ] Run `pnpm install` after pulling — `react-hot-toast` is new in `apps/web/package.json`
 
@@ -18,8 +18,8 @@
 ## 🟡 High Priority — Next session
 
 - [ ] Wire `PrepHistoryPage` — query `prep_plans` filtered by `is_completed = true`, ordered by `completed_at DESC`; display as a table of completed shifts with item count and completion time
-- [ ] Add `DashboardPage` query — `get_dashboard_stats` RPC is defined in V006 but `DashboardPage` still uses mock/static values; wire to `useQuery` with key `['dashboard_stats']`
-- [ ] `apps/web/.env.example` — confirm this file exists with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` keys (no values)
+- [ ] Add `DashboardPage` query — `get_dashboard_stats` RPC is defined in V009 but `DashboardPage` still uses mock/static values; wire to `useQuery` with key `['dashboard_stats']`
+- [x] `apps/web/.env.example` — confirm this file exists with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` keys (no values)
 
 ---
 
@@ -60,7 +60,8 @@
 - [x] Turborepo monorepo scaffold
 - [x] `ratio-engine` + `prep-engine` packages
 - [x] `recipe-mcp` + `prep-mcp` MCP server stubs
-- [x] Supabase migrations V001–V008
+- [x] Supabase migrations V001–V009 (fixed trigger column bug, RPC security, get_dashboard_stats RPC, FK indexes)
+- [x] Monorepo TypeScript compilation fixed across all packages, apps/web, and MCP servers (0 errors)
 - [x] Auth — magic link + AuthContext + RequireAuth
 - [x] Layout shell — Sidebar (responsive), Topbar
 - [x] Recipes — full CRUD with ratio-based ingredients

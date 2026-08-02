@@ -181,9 +181,10 @@ Unique constraint: `(user_id, shift, plan_date)` — upsert conflict target in `
 | V003__ingredients.sql | `recipe_ingredients` table + RLS |
 | V004__par_levels.sql | `par_levels` table + RLS |
 | V005__prep_plans.sql | `prep_plans` + `prep_plan_items` + RLS |
-| V006__rpc_helpers.sql | `get_dashboard_stats` RPC |
+| V006__rpc_helpers.sql | RPC helper functions (`scale_recipe`, `build_shift_prep`, `get_recipe_with_ingredients`) |
 | V007__prep_plan_rpc.sql | `get_prep_plan_with_items` + `build_and_save_shift_prep` RPCs |
 | V008__stock_decrement_trigger.sql | Trigger: decrement `par_levels.current_stock` when item marked done |
+| V009__fix_trigger_and_rpc_security.sql | Fix trigger `NEW.prep_plan_id`, secure RPC search paths, add `get_dashboard_stats` RPC, FK indexes |
 
 ---
 
@@ -191,7 +192,7 @@ Unique constraint: `(user_id, shift, plan_date)` — upsert conflict target in `
 
 | Function | Defined in | Returns | Purpose |
 |---|---|---|---|
-| `get_dashboard_stats(user_id)` | V006 | JSON | Recipe count, par item count, below-par count, active prep plans |
+| `get_dashboard_stats(user_id)` | V009 | JSON | Recipe count, par item count, below-par count, active prep plans |
 | `get_prep_plan_with_items(shift, date)` | V007 | JSON | Single round-trip fetch of plan + items (used by `prep-mcp`) |
 | `build_and_save_shift_prep(shift, date)` | V007 | uuid | Atomic server-side plan creation preserving done items |
 
@@ -199,22 +200,12 @@ Unique constraint: `(user_id, shift, plan_date)` — upsert conflict target in `
 
 ## Shared Packages
 
-### `@kitchenkit/ratio-engine`
+```
+packages/ratio-engine   ← Baker's percentage math, recipe scaling (zero deps)
+packages/prep-engine    ← Shift prep list generation, par level math
+```
 
-Pure TypeScript, zero runtime dependencies. Exports:
-
-- `type Recipe` — `{ baseIngredient: string, ingredients: Record<string, number> }`
-- `scaleRecipe(recipe, targetAmount)` — returns scaled ingredient map
-- `getRatio(recipe, ingredient)` — returns ratio for a named ingredient
-- `generatePrepList(recipe, batchSize)` — returns `PrepListItem[]`
-
-### `@kitchenkit/prep-engine`
-
-Builds on `ratio-engine`. Exports:
-
-- `buildShiftPrep(parLevels, recipes)` — computes what needs prepping based on current stock vs par
-- `getMiseEnPlace(recipe, portions)` — returns mise en place breakdown
-- `projectBatchSize(parLevel, recipe)` — calculates how many batches to run
+Both packages are written in pure TypeScript, compiled to CommonJS + ESM, and published to the internal workspace. `apps/web` and `mcp/*` consume them as workspace dependencies (`"workspace:*"`).
 
 ---
 
@@ -243,12 +234,21 @@ Both servers are stdio MCP servers conforming to the [Anthropic MCP spec](https:
 
 ## Environment Variables
 
-| Variable | Where used | Description |
+| Variable | Scope / Where used | Description |
 |---|---|---|
 | `VITE_SUPABASE_URL` | `apps/web` | Supabase project REST URL |
 | `VITE_SUPABASE_ANON_KEY` | `apps/web` | Supabase anon/public key (safe to expose client-side) |
+| `KITCHENKIT_SUPABASE_URL` | `mcp/*` | Supabase project URL for server-side MCP tools |
+| `KITCHENKIT_SUPABASE_SERVICE_KEY` | `mcp/*` | Supabase service role secret key (server-side only, NEVER expose to web client) |
 
-All variables are prefixed `VITE_` for Vite client-side exposure. No server-side secrets exist yet (Stripe keys will be added in Phase 2).
+Variables for `apps/web` are prefixed `VITE_` for Vite client-side exposure. `KITCHENKIT_SUPABASE_SERVICE_KEY` is reserved strictly for server-side MCP servers (`recipe-mcp`, `prep-mcp`) to execute administrative/RPC tasks on behalf of users.
+
+### Supabase Auth Redirect Requirements
+In production, Supabase Authentication -> URL Configuration MUST include:
+- **Site URL**: `https://<your-vercel-domain>.vercel.app`
+- **Redirect URLs**:
+  - `https://<your-vercel-domain>.vercel.app/auth/callback`
+  - `http://localhost:5173/auth/callback` (local development)
 
 ---
 
@@ -267,4 +267,4 @@ All variables are prefixed `VITE_` for Vite client-side exposure. No server-side
 
 ---
 
-*Last updated: 2026-07-02*
+*Last updated: 2026-08-02*

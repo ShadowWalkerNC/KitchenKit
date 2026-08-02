@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "description": "Pure TypeScript recipe ratio math engine — zero deps. Shared with CulinaryOS.",
   "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "type": "module",
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",

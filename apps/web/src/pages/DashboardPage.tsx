@@ -43,7 +43,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       <div>
-        <h2 className="text-2xl font-bold text-zinc-100">
+        <h2 className="text-xl font-bold text-zinc-100">
           {isLoading ? 'Loading...' : `Welcome back, ${displayName} 👋`}
         </h2>
         <p className="mt-1 text-sm text-zinc-400">Here’s what’s on deck for today.</p>
@@ -57,7 +57,7 @@ export default function DashboardPage() {
               <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{label}</span>
               <Icon size={16} className={`${color} transition-colors`} />
             </div>
-            <p className="text-3xl font-bold tabular-nums text-zinc-100">
+            <p className="text-xl font-bold tabular-nums text-zinc-100">
               {isLoading ? <span className="text-zinc-600 text-lg">…</span> : value}
             </p>
           </Link>
@@ -96,7 +96,7 @@ export default function DashboardPage() {
       {/* Ratio engine callout */}
       <div className="card border-brand-600/30 bg-brand-600/5">
         <div className="flex items-start gap-3">
-          <span className="text-2xl">🧠</span>
+          <span className="text-xl">🧠</span>
           <div>
             <h3 className="font-semibold text-zinc-100 mb-1">Ratio Blueprint Engine</h3>
             <p className="text-sm text-zinc-400">

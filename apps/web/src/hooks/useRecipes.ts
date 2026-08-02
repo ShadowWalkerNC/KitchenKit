@@ -26,12 +26,45 @@ export interface DBRecipe {
   ingredients: DBIngredient[];
 }
 
+export interface CreateRecipeIngredientInput {
+  name: string;
+  ratio: number;
+  unit: string;
+  sort_order: number;
+}
+
+export interface CreateRecipeInput {
+  name: string;
+  description?: string;
+  base_ingredient: string;
+  yield_unit: string;
+  tags?: string[];
+  ingredients: CreateRecipeIngredientInput[];
+}
+
+export interface UpdateRecipeInput {
+  id: string;
+  name: string;
+  description?: string;
+  base_ingredient: string;
+  yield_unit: string;
+  tags?: string[];
+  is_public?: boolean;
+  ingredients: CreateRecipeIngredientInput[];
+}
+
 export function toEngineRecipe(r: DBRecipe): Recipe {
-  const ingredients: Record<string, number> = {};
-  for (const ing of r.ingredients) {
-    ingredients[ing.name] = Number(ing.ratio);
-  }
-  return { baseIngredient: r.base_ingredient, ingredients };
+  return {
+    id: r.id,
+    name: r.name,
+    baseIngredient: r.base_ingredient,
+    yieldUnit: r.yield_unit,
+    ingredients: (r.ingredients || []).map((ing) => ({
+      name: ing.name,
+      ratio: Number(ing.ratio),
+      unit: ing.unit,
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +78,7 @@ export function useRecipes() {
       if (!user) return [];
       const { data, error } = await supabase
         .from('recipes')
-        .select('*, ingredients:recipe_ingredients(*)')
+        .select('*, ingredients:ingredients(*)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -63,7 +96,7 @@ export function useRecipe(id: string | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recipes')
-        .select('*, ingredients:recipe_ingredients(*)')
+        .select('*, ingredients:ingredients(*)')
         .eq('id', id!)
         .single();
       if (error) throw error;
@@ -79,14 +112,7 @@ export function useRecipe(id: string | undefined) {
 export function useCreateRecipe() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: {
-      name: string;
-      description?: string;
-      base_ingredient: string;
-      yield_unit: string;
-      tags?: string[];
-      ingredients: Array<{ name: string; ratio: number; unit: string; sort_order: number }>;
-    }) => {
+    mutationFn: async (payload: CreateRecipeInput) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -106,7 +132,7 @@ export function useCreateRecipe() {
 
       if (payload.ingredients.length > 0) {
         const { error: ingErr } = await supabase
-          .from('recipe_ingredients')
+          .from('ingredients')
           .insert(payload.ingredients.map(ing => ({ ...ing, recipe_id: recipe.id })));
         if (ingErr) throw ingErr;
       }
@@ -129,15 +155,7 @@ export function useCreateRecipe() {
 export function useUpdateRecipe() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: {
-      id: string;
-      name: string;
-      description?: string;
-      base_ingredient: string;
-      yield_unit: string;
-      tags?: string[];
-      ingredients: Array<{ name: string; ratio: number; unit: string; sort_order: number }>;
-    }) => {
+    mutationFn: async (payload: UpdateRecipeInput) => {
       const { error: recipeErr } = await supabase
         .from('recipes')
         .update({
@@ -146,15 +164,16 @@ export function useUpdateRecipe() {
           base_ingredient: payload.base_ingredient,
           yield_unit:      payload.yield_unit,
           tags:            payload.tags ?? [],
+          ...(payload.is_public !== undefined ? { is_public: payload.is_public } : {}),
         })
         .eq('id', payload.id);
       if (recipeErr) throw recipeErr;
 
-      await supabase.from('recipe_ingredients').delete().eq('recipe_id', payload.id);
+      await supabase.from('ingredients').delete().eq('recipe_id', payload.id);
 
       if (payload.ingredients.length > 0) {
         const { error: ingErr } = await supabase
-          .from('recipe_ingredients')
+          .from('ingredients')
           .insert(payload.ingredients.map(ing => ({ ...ing, recipe_id: payload.id })));
         if (ingErr) throw ingErr;
       }

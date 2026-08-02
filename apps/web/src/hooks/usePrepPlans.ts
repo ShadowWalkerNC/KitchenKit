@@ -20,6 +20,7 @@ export interface DBPrepPlanItem {
   unit: string;
   is_done: boolean;
   done_at: string | null;
+  note?: string | null;
 }
 
 export interface DBPrepPlanWithItems extends DBPrepPlan {
